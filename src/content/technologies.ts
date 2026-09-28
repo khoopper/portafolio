@@ -1,0 +1,27 @@
+import type { Technology } from "@/lib/types";
+
+export const technologies: Technology[] = [
+  { slug: "javascript", name: "JavaScript (ES6+)", category: "lenguajes", iconSlug: "javascript" },
+  { slug: "typescript", name: "TypeScript", category: "lenguajes", iconSlug: "typescript" },
+  { slug: "kotlin", name: "Kotlin", category: "lenguajes", iconSlug: "kotlin" },
+  { slug: "react", name: "React", category: "frontend", iconSlug: "react" },
+  { slug: "nextjs", name: "Next.js", category: "frontend", iconSlug: "nextdotjs" },
+  { slug: "vite", name: "Vite", category: "frontend", iconSlug: "vite" },
+  { slug: "jetpack-compose", name: "Jetpack Compose", category: "frontend", iconSlug: "jetpackcompose" },
+  { slug: "framer-motion", name: "Framer Motion", category: "frontend", iconSlug: null },
+  { slug: "tailwindcss", name: "Tailwind CSS", category: "frontend", iconSlug: "tailwindcss" },
+  { slug: "html5", name: "HTML5", category: "frontend", iconSlug: "html5" },
+  { slug: "css", name: "CSS3", category: "frontend", iconSlug: "css" },
+  { slug: "shadcnui", name: "shadcn/ui", category: "frontend", iconSlug: "shadcnui" },
+  { slug: "supabase", name: "Supabase", category: "backend", iconSlug: "supabase" },
+  { slug: "nodejs", name: "Node.js", category: "backend", iconSlug: "nodedotjs" },
+  { slug: "zod", name: "Zod", category: "backend", iconSlug: "zod" },
+  { slug: "rls", name: "RLS (Row Level Security)", category: "backend", iconSlug: null },
+  { slug: "rbac", name: "RBAC", category: "backend", iconSlug: null },
+  { slug: "retrofit", name: "Retrofit", category: "backend", iconSlug: null },
+  { slug: "postgresql", name: "PostgreSQL", category: "bases-datos", iconSlug: "postgresql" },
+  { slug: "vercel", name: "Vercel", category: "herramientas", iconSlug: "vercel" },
+  { slug: "git", name: "Git", category: "herramientas", iconSlug: "git" },
+  { slug: "github", name: "GitHub", category: "herramientas", iconSlug: "github" },
+  { slug: "chartjs", name: "Chart.js", category: "herramientas", iconSlug: "chartdotjs" },
+];
