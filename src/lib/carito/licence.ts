@@ -23,6 +23,31 @@ export interface LicenceFields {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** Crockford base32: sin I, L, O ni U, para que nada se lea como otra cosa (el alfabeto del SQL). */
+export const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+/** Una licencia: 9 caracteres (como `^[0-9A-HJKMNP-TV-Z]{9}$`). */
+export const LICENCE_CHARS = 9;
+/** El código de un solo uso que vincula el teléfono del dueño con el panel. */
+export const PAIRING_CHARS = 8;
+
+/** Lo que la app manda al servidor: mayúsculas y nada más (la limpieza fina la hace el SQL). */
+export function cleanCode(text: string): string {
+  return text.toUpperCase().replace(/[^0-9A-Z]/g, "");
+}
+
+/** «ABC-123-XYZ»: como se dicta y se lee una licencia. */
+export function formatLicenceCode(text: string): string {
+  return cleanCode(text).slice(0, LICENCE_CHARS).match(/.{1,3}/g)?.join("-") ?? "";
+}
+
+/** El mensaje que se le manda al amigo (el mismo que arma la app del dueño al compartir por WhatsApp). [untilDay] ya viene escrito («17 nov 2026»). */
+export function licenceMessage(name: string, code: string, untilDay: string | null): string {
+  const who = name.trim() ? `${name.trim()}, tu` : "Tu";
+  const length = untilDay ? `Hasta el ${untilDay}` : "Sin fecha de vencimiento";
+  return `${who} licencia de Carito Music es: ${formatLicenceCode(code)}\n${length}. Escríbela en la app, donde dice «Introduce tu licencia».`;
+}
+
+
 /** "2026-10-17": the date in El Salvador at [now]. */
 export function caritoToday(now: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: CARITO_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
@@ -58,7 +83,38 @@ export function memberState(member: LicenceFields, now: Date = new Date()): Memb
   return { kind: "waiting" };
 }
 
+/**
+ * Las licencias sin cuenta, como las ve el panel. Mismas reglas que `public.carito_licence_status` (el SQL que responde
+ * a la app): revocada > sin límite > hasta su último día (fecha de El Salvador) > vencida.
+ */
+export type LicenceState =
+  | { kind: "revoked" }
+  | { kind: "forever" }
+  | { kind: "licence"; until: string; daysLeft: number }
+  | { kind: "expired"; until: string }
+  | { kind: "waiting" };
+
+/** Lo que decide el estado de una licencia sin cuenta (aquí no hay prueba de 3 días). */
+export interface LicenceStateFields {
+  revoked_at: string | null;
+  licence_until: string | null;
+  licence_forever: boolean;
+}
+
+export function licenceState(fields: LicenceStateFields, now: Date = new Date()): LicenceState {
+  if (fields.revoked_at) return { kind: "revoked" };
+  if (fields.licence_forever) return { kind: "forever" };
+  const today = caritoToday(now);
+  if (fields.licence_until && fields.licence_until >= today) {
+    return { kind: "licence", until: fields.licence_until, daysLeft: daysBetween(today, fields.licence_until) };
+  }
+  if (fields.licence_until) return { kind: "expired", until: fields.licence_until };
+  return { kind: "waiting" };
+}
+
 export const hasAccess = (state: MemberState) => state.kind === "forever" || state.kind === "licence" || state.kind === "trial";
+
+export const licenceHasAccess = (state: LicenceState) => state.kind === "forever" || state.kind === "licence";
 
 /**
  * The last day of a licence given for [months]: counted from the end of the licence still running (a renewal adds), otherwise

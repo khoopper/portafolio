@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addMonths, caritoToday, daysBetween, hasAccess, memberState, parseGrant, renewedUntil, stateLabel } from "./licence";
+import { addMonths, caritoToday, daysBetween, hasAccess, licenceState, memberState, parseGrant, renewedUntil, stateLabel } from "./licence";
 
 // 2026-10-17 20:00 in El Salvador (UTC-6) is already the 18th in UTC.
 const NOW = new Date("2026-10-18T02:00:00Z");
@@ -46,5 +46,15 @@ describe("carito licence", () => {
     expect(stateLabel({ kind: "licence", until: "2026-11-17", daysLeft: 31 })).toBe("31 días");
     expect(stateLabel({ kind: "trial", endsAt: "", daysLeft: 1 })).toBe("Prueba · 1 día");
     expect(hasAccess({ kind: "trial_ended" })).toBe(false);
+  });
+
+  it("orders the states of a licence without an account like the app's SQL", () => {
+    const licence = { revoked_at: null, licence_forever: false, licence_until: null };
+    expect(licenceState({ ...licence, revoked_at: "2026-10-01T00:00:00Z", licence_forever: true }, NOW).kind).toBe("revoked");
+    expect(licenceState({ ...licence, licence_forever: true }, NOW).kind).toBe("forever");
+    expect(licenceState({ ...licence, licence_until: "2026-10-17" }, NOW)).toEqual({ kind: "licence", until: "2026-10-17", daysLeft: 0 });
+    expect(licenceState({ ...licence, licence_until: "2026-11-17" }, NOW)).toEqual({ kind: "licence", until: "2026-11-17", daysLeft: 31 });
+    expect(licenceState({ ...licence, licence_until: "2026-10-16" }, NOW).kind).toBe("expired");
+    expect(licenceState(licence, NOW).kind).toBe("waiting");
   });
 });
