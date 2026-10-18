@@ -1,5 +1,5 @@
 import { IconControlPanel, IconFolder, IconUser, Win7Icon } from "@/components/icons";
-import { IconAdminShield, IconAuditLogs, IconTaskManager } from "@/components/icons/admin-icons";
+import { IconAdminShield, IconAuditLogs, IconTaskManager, IconWindowsMediaPlayer } from "@/components/icons/admin-icons";
 import type { NavItem } from "@/components/win7/site-nav";
 
 export const ADMIN_NAV: NavItem[] = [
@@ -20,6 +20,12 @@ export const ADMIN_NAV: NavItem[] = [
     label: "Recomendaciones",
     description: "Invitaciones y moderación",
     icon: <Win7Icon name="shield-ok" className="size-full" />,
+  },
+  {
+    href: "/admin/carito",
+    label: "Carito Music",
+    description: "Licencias, pruebas y registros de la app",
+    icon: <IconWindowsMediaPlayer className="size-full" />,
   },
   {
     href: "/admin/tecnologias",

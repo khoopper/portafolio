@@ -45,6 +45,7 @@ Portafolio personal con la experiencia de un escritorio **Windows 7 Aero**: pant
 | `/contacto` | Enlaces de contacto |
 | `/p/[slug]` | Vista para compartir un solo proyecto con un cliente |
 | `/r/[token]` | Formulario privado para que un cliente deje su recomendación |
+| `/admin/carito` | Licencias de Carito Music: registrados, prueba de 3 días, dar / renovar / revocar ([src/lib/carito/README.md](src/lib/carito/README.md)) |
 
 ## Recomendaciones verificadas
 
