@@ -197,9 +197,11 @@ function LicencesTable({ items, empty, onRenew }: { items: CaritoLicence[]; empt
           <tr key={l.id} className="align-top hover:bg-[#eef5fc]">
             <td className="p-2.5">
               <span className="block font-mono text-[13px] font-semibold text-[#1e3287]">{formatLicenceCode(l.code)}</span>
-              <span className="block text-win-muted">creada {day(l.createdAt.slice(0, 10))}</span>
-              {l.source === "import" && <span className="block text-[11px] text-win-muted">Importada de la 2.6</span>}
-              {l.source === "app" && <span className="block text-[11px] text-win-muted">Hecha en tu teléfono</span>}
+              <span className="block text-win-muted">
+                Registrada {day(caritoToday(new Date(l.createdAt)))}
+                {l.source === "import" ? " en la 2.6" : l.source === "app" ? " en tu teléfono" : ""}
+              </span>
+              <span className="block text-win-muted">{l.startedOn ? `Inicio ${day(l.startedOn)}` : "Sin empezar"}</span>
             </td>
             <td className="p-2.5 font-semibold">{l.name || <span className="font-normal text-win-muted">—</span>}</td>
             <td className="p-2.5">
@@ -232,7 +234,6 @@ function LicencesTable({ items, empty, onRenew }: { items: CaritoLicence[]; empt
               {l.lastSeenAt ? (
                 <>
                   <span className="block">{moment(l.lastSeenAt)}</span>
-                  {l.activatedAt && <span className="block text-win-muted">activada {day(l.activatedAt.slice(0, 10))}</span>}
                 </>
               ) : (
                 <span className="text-win-muted">Nunca la escribió</span>

@@ -1,5 +1,5 @@
 import { createServiceClient } from "@/lib/supabase";
-import { licenceState, type LicenceState, type LicenceStateFields } from "./licence";
+import { licenceStart, licenceState, type LicenceState, type LicenceStateFields } from "./licence";
 
 /**
  * Las licencias que el dueño reparte sin cuenta de Google, como las lista el panel: quién la tiene, hasta cuándo, en qué
@@ -21,8 +21,11 @@ export interface CaritoLicence extends LicenceStateFields {
   state: LicenceState;
   /** Un teléfono ya la escribió (o estaba ligada a él desde que se creó). */
   activated: boolean;
+  /** Cuándo se registró: cuando se creó o, las de la 2.6, el día en que el dueño la dio entonces. */
   createdAt: string;
   activatedAt: string | null;
+  /** El día en que empezó ("YYYY-MM-DD" en El Salvador): el de la 2.6, o el primero en que un teléfono la escribió. */
+  startedOn: string | null;
   lastSeenAt: string | null;
   deviceChanges: number;
   playlists: number;
@@ -74,6 +77,7 @@ export async function listCaritoLicences(now: Date = new Date()): Promise<Carito
     activated: row.activated_at !== null || row.device_code !== null,
     createdAt: row.created_at,
     activatedAt: row.activated_at,
+    startedOn: licenceStart(row),
     lastSeenAt: row.last_seen_at,
     deviceChanges: row.device_changes,
     playlists: row.carito_licence_libraries?.playlists ?? 0,

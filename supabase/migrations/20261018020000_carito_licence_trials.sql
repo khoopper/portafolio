@@ -1,9 +1,30 @@
--- Carito Music: licencias de prueba. El dueño da una "Prueba de 3 días" (desde el panel o su teléfono); los días empiezan a contar
--- cuando el amigo la escribe en su teléfono, no cuando se crea. Si el dueño le pone una fecha o "sin límite", deja de ser prueba.
+-- Carito Music: licencias de prueba, y el día en que empezó cada licencia.
+-- 1. El dueño da una "Prueba de 3 días" (desde el panel o su teléfono); los días empiezan a contar cuando el amigo la escribe en su
+--    teléfono, no cuando se crea. Si el dueño le pone una fecha o "sin límite", deja de ser prueba.
+-- 2. Cada licencia dice cuándo se registró (las de la 2.6: el día en que el dueño la dio entonces) y cuándo empezó (el primer día en
+--    un teléfono). La importación de la 2.6 corrige esas fechas en las que ya subió.
 
 alter table public.carito_licences add column trial_days smallint check (trial_days between 1 and 30);
 
--- El estado que ve la app: una prueba vigente es 'trial'; terminada, 'trial_ended'.
+-- El día en que empezó: el que la 2.6 la dio (las importadas) o el primero en que un teléfono la escribió. Null: nadie la ha escrito.
+create function public.carito_licence_start(l public.carito_licences) returns date
+language sql stable set search_path = public
+as $$
+  select ((case when l.source = 'import' then l.created_at else l.activated_at end) at time zone 'America/El_Salvador')::date
+$$;
+
+revoke execute on function public.carito_licence_start(public.carito_licences) from public, anon, authenticated;
+
+-- Las importadas guardaron la medianoche UTC del día de la 2.6 (en El Salvador, la tarde del día anterior): pasan al mediodía de
+-- ese día. Las que no traían día (1970) toman el día en que su teléfono la tomó.
+update public.carito_licences
+   set created_at = coalesce(activated_at, now())
+ where source = 'import' and created_at < timestamptz '2000-01-01';
+update public.carito_licences
+   set created_at = created_at + interval '18 hours'
+ where source = 'import' and created_at = date_trunc('day', created_at at time zone 'UTC') at time zone 'UTC';
+
+-- El estado que ve la app: una prueba vigente es 'trial'; terminada, 'trial_ended'. 'started' es el día en que empezó.
 create or replace function public.carito_licence_status(l public.carito_licences, p_device text) returns jsonb
 language sql stable set search_path = public
 as $$
@@ -23,6 +44,7 @@ as $$
     'until', case when r.reason in ('licence', 'trial') then ((l.licence_until + 1)::timestamp at time zone 'America/El_Salvador') end,
     'licence_until', l.licence_until,
     'trial', l.trial_days is not null,
+    'started', public.carito_licence_start(l),
     'name', l.name,
     'device_model', l.device_model,
     'server_time', now()
@@ -73,7 +95,7 @@ begin
 end;
 $$;
 
--- La lista del dueño dice cuáles son pruebas.
+-- La lista del dueño dice cuáles son pruebas, cuándo empezó cada una y cuándo se guardó su biblioteca por última vez.
 create or replace function public.carito_owner_licences(p_token text)
 returns jsonb
 language plpgsql volatile security definer set search_path = public
@@ -84,7 +106,8 @@ begin
     select jsonb_agg(jsonb_build_object(
       'id', l.id, 'code', l.code, 'name', l.name, 'device_code', l.device_code, 'device_model', l.device_model,
       'licence_until', l.licence_until, 'forever', l.licence_forever, 'revoked', l.revoked_at is not null,
-      'trial_days', l.trial_days,
+      'trial_days', l.trial_days, 'source', l.source, 'started', public.carito_licence_start(l),
+      'library_at', b.updated_at,
       'activated_at', l.activated_at, 'last_seen_at', l.last_seen_at, 'created_at', l.created_at,
       'playlists', coalesce(b.playlists, 0)
     ) order by l.created_at desc)
@@ -138,3 +161,45 @@ $$;
 
 revoke execute on function public.carito_owner_create(text, text, text, date, boolean, smallint) from public;
 grant execute on function public.carito_owner_create(text, text, text, date, boolean, smallint) to anon, authenticated;
+
+-- La importación de la 2.6: el día en que se dio queda al mediodía de El Salvador, y una licencia ya importada toma otra vez ese día
+-- (así se corrigen las que subieron antes). No duplica: un teléfono ya importado solo se actualiza.
+create or replace function public.carito_owner_import(p_token text, p_items jsonb)
+returns integer
+language plpgsql volatile security definer set search_path = public
+as $$
+declare
+  v_item jsonb;
+  v_added integer := 0;
+  v_device text;
+  v_code text;
+  v_issued timestamptz;
+begin
+  if not public.carito_owner_check(p_token) then raise exception 'not_owner' using errcode = '42501'; end if;
+  for v_item in select * from jsonb_array_elements(coalesce(p_items, '[]'::jsonb)) loop
+    v_device := upper(v_item->>'device');
+    continue when v_device is null or v_device !~ '^[0-9A-HJKMNP-TV-Z]{5}$';
+    -- "day" de la 2.6: días desde 1970 (UTC); 0 o nada es que no se sabe.
+    v_issued := case when coalesce((v_item->>'issued_day')::bigint, 0) > 0
+      then to_timestamp((v_item->>'issued_day')::bigint * 86400) + interval '18 hours' end;
+    if exists (select 1 from public.carito_licences where device_code = v_device and source = 'import') then
+      update public.carito_licences set created_at = v_issued
+       where device_code = v_device and source = 'import' and v_issued is not null and created_at is distinct from v_issued;
+      continue;
+    end if;
+    v_code := upper(coalesce(v_item->>'licence', ''));
+    if v_code !~ '^[0-9A-HJKMNP-TV-Z]{9}$' or exists (select 1 from public.carito_licences where code = v_code) then
+      v_code := public.carito_new_code();
+    end if;
+    insert into public.carito_licences (code, name, device_code, claimable, licence_until, licence_forever, source, created_at)
+    values (
+      v_code, left(coalesce(v_item->>'name', ''), 60), v_device, true,
+      case when coalesce((v_item->>'forever')::boolean, false) then null else (v_item->>'until')::date end,
+      coalesce((v_item->>'forever')::boolean, false), 'import',
+      coalesce(v_issued, now())
+    );
+    v_added := v_added + 1;
+  end loop;
+  return v_added;
+end;
+$$;

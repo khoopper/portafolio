@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addMonths, licenceHasAccess, licenceInTrial, caritoToday, daysBetween, hasAccess, licenceState, memberState, parseGrant, renewedUntil, stateLabel } from "./licence";
+import { addMonths, licenceHasAccess, licenceInTrial, licenceStart, caritoToday, daysBetween, hasAccess, licenceState, memberState, parseGrant, renewedUntil, stateLabel } from "./licence";
 
 // 2026-10-17 20:00 in El Salvador (UTC-6) is already the 18th in UTC.
 const NOW = new Date("2026-10-18T02:00:00Z");
@@ -67,5 +67,14 @@ describe("carito licence", () => {
     expect(licenceState({ ...licence, licence_until: "2026-11-17" }, NOW)).toEqual({ kind: "licence", until: "2026-11-17", daysLeft: 31 });
     expect(licenceState({ ...licence, licence_until: "2026-10-16" }, NOW).kind).toBe("expired");
     expect(licenceState(licence, NOW).kind).toBe("waiting");
+  });
+});
+
+describe("carito licence start", () => {
+  it("is the 2.6 day for imported licences and the first phone day for the rest", () => {
+    // 18:00 UTC is noon in El Salvador; 03:00 UTC is still the evening before there.
+    expect(licenceStart({ source: "import", created_at: "2026-02-16T18:00:00Z", activated_at: "2026-10-18T03:00:00Z" })).toBe("2026-02-16");
+    expect(licenceStart({ source: "panel", created_at: "2026-10-01T18:00:00Z", activated_at: "2026-10-18T03:00:00Z" })).toBe("2026-10-17");
+    expect(licenceStart({ source: "app", created_at: "2026-10-01T18:00:00Z", activated_at: null })).toBeNull();
   });
 });

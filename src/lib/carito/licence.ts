@@ -55,6 +55,15 @@ export function licenceMessage(name: string, code: string, untilDay: string | nu
 }
 
 
+/**
+ * El día en que empezó una licencia ("YYYY-MM-DD" en El Salvador), igual que carito_licence_start en el SQL: el día de la 2.6 para
+ * las importadas; si no, el primero en que un teléfono la escribió (null: nadie todavía).
+ */
+export function licenceStart(row: { source: string; created_at: string; activated_at: string | null }): string | null {
+  const start = row.source === "import" ? row.created_at : row.activated_at;
+  return start ? caritoToday(new Date(start)) : null;
+}
+
 /** "2026-10-17": the date in El Salvador at [now]. */
 export function caritoToday(now: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: CARITO_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
