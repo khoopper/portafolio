@@ -26,5 +26,6 @@ describe("carito licence codes", () => {
       "Ana, tu licencia de Carito Music es: ABC-123-XYZ\nHasta el 17 nov 2026. Escríbela en la app, donde dice «Introduce tu licencia»."
     );
     expect(licenceMessage("", "ABC123XYZ", null)).toContain("Sin fecha de vencimiento");
+    expect(licenceMessage("Ana", "ABC123XYZ", null, 3)).toContain("Prueba gratis de 3 días, desde el día que la escribas");
   });
 });

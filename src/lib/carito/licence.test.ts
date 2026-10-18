@@ -1,9 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { addMonths, caritoToday, daysBetween, hasAccess, licenceState, memberState, parseGrant, renewedUntil, stateLabel } from "./licence";
+import { addMonths, licenceHasAccess, licenceInTrial, caritoToday, daysBetween, hasAccess, licenceState, memberState, parseGrant, renewedUntil, stateLabel } from "./licence";
 
 // 2026-10-17 20:00 in El Salvador (UTC-6) is already the 18th in UTC.
 const NOW = new Date("2026-10-18T02:00:00Z");
 const base = { revoked_at: null, licence_forever: false, licence_until: null, trial_ends_at: null };
+
+describe("carito trial licences", () => {
+  const plain = { revoked_at: null, licence_forever: false, licence_until: null };
+  it("a trial starts when it is written, not when it is made", () => {
+    expect(licenceState({ ...plain, trial_days: 3 }, NOW)).toEqual({ kind: "trial_waiting", days: 3 });
+    expect(licenceState({ ...plain, trial_days: 3, licence_until: "2026-10-20" }, NOW)).toEqual({ kind: "trial", until: "2026-10-20", daysLeft: 3 });
+    expect(licenceState({ ...plain, trial_days: 3, licence_until: "2026-10-16" }, NOW).kind).toBe("trial_ended");
+    expect(licenceInTrial(licenceState({ ...plain, trial_days: 3 }, NOW))).toBe(true);
+    expect(licenceHasAccess(licenceState({ ...plain, trial_days: 3, licence_until: "2026-10-20" }, NOW))).toBe(false);
+  });
+});
 
 describe("carito licence", () => {
   it("uses El Salvador's date", () => {

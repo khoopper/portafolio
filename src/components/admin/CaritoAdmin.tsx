@@ -15,12 +15,23 @@ import {
 } from "@/app/(admin)/admin/carito-actions";
 import { CloseGlyph } from "@/components/icons";
 import { Tabs } from "@/components/win7/Tabs";
-import { CARITO_TIME_ZONE, addMonths, caritoToday, formatLicenceCode, hasAccess, licenceHasAccess, licenceMessage, renewedUntil, stateLabel, type MemberState } from "@/lib/carito/licence";
+import {
+  CARITO_TIME_ZONE,
+  addMonths,
+  caritoToday,
+  formatLicenceCode,
+  hasAccess,
+  licenceHasAccess,
+  licenceInTrial,
+  licenceMessage,
+  renewedUntil,
+  stateLabel,
+  type MemberState,
+} from "@/lib/carito/licence";
 import type { CaritoLicence, LicenceState } from "@/lib/carito/licences";
 import type { CaritoMember } from "@/lib/carito/queries";
 
 const small = "win-button text-xs py-1 px-3";
-const smallLink = `${small} inline-flex items-center`;
 const day = (ymd: string) => new Date(`${ymd}T12:00:00Z`).toLocaleDateString("es", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
 const moment = (iso: string) =>
   new Date(iso).toLocaleString("es", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", timeZone: CARITO_TIME_ZONE });
@@ -38,6 +49,9 @@ const BADGE: Record<MemberState["kind"], string> = {
 const LICENCE_BADGE: Record<LicenceState["kind"], string> = {
   forever: BADGE.forever,
   licence: BADGE.licence,
+  trial: BADGE.trial,
+  trial_waiting: BADGE.trial,
+  trial_ended: BADGE.trial_ended,
   waiting: BADGE.waiting,
   expired: BADGE.expired,
   revoked: BADGE.revoked,
@@ -64,7 +78,13 @@ export function CaritoAdmin({ members, licences }: { members: CaritoMember[]; li
       members: members.filter((m) => hasAccess(m.state) && m.state.kind !== "trial"),
       empty: "Nadie tiene acceso todavía.",
     },
-    { id: "prueba", label: "En prueba", licences: [], members: members.filter((m) => m.state.kind === "trial"), empty: "Nadie está en prueba." },
+    {
+      id: "prueba",
+      label: "En prueba",
+      licences: all.filter((l) => licenceInTrial(l.state)),
+      members: members.filter((m) => m.state.kind === "trial"),
+      empty: "Nadie está en prueba.",
+    },
     {
       id: "revocados",
       label: "Revocados",
@@ -75,7 +95,7 @@ export function CaritoAdmin({ members, licences }: { members: CaritoMember[]; li
     {
       id: "sin",
       label: "Sin acceso",
-      licences: all.filter((l) => !licenceHasAccess(l.state) && l.state.kind !== "revoked"),
+      licences: all.filter((l) => !licenceHasAccess(l.state) && !licenceInTrial(l.state) && l.state.kind !== "revoked"),
       members: members.filter((m) => !hasAccess(m.state) && m.state.kind !== "revoked"),
       empty: "Nadie se quedó sin acceso.",
     },
@@ -156,6 +176,12 @@ function licenceUntil(state: LicenceState): string | null {
       return `hasta el ${day(state.until)}`;
     case "expired":
       return `venció el ${day(state.until)}`;
+    case "trial":
+      return `termina el ${day(state.until)}`;
+    case "trial_waiting":
+      return "empieza cuando la escriba";
+    case "trial_ended":
+      return `terminó el ${day(state.until)}`;
     default:
       return null;
   }
@@ -167,7 +193,6 @@ function LicencesTable({ items, empty, onRenew }: { items: CaritoLicence[]; empt
     <DetailsTable head={["Licencia", "Para", "Teléfono", "Estado", "Biblioteca", "Último uso", "Acciones"]}>
       {items.map((l) => {
         const until = licenceUntil(l.state);
-        const message = licenceMessage(l.name, l.code, l.state.kind === "licence" ? day(l.state.until) : null);
         return (
           <tr key={l.id} className="align-top hover:bg-[#eef5fc]">
             <td className="p-2.5">
@@ -228,9 +253,6 @@ function LicencesTable({ items, empty, onRenew }: { items: CaritoLicence[]; empt
                     question={`¿Quitarle el acceso a esta licencia${l.name ? ` de ${l.name}` : ""}? El teléfono se bloquea en cuanto se conecte.`}
                   />
                 )}
-                <a className={smallLink} href={`https://wa.me/?text=${encodeURIComponent(message)}`} target="_blank" rel="noreferrer">
-                  WhatsApp
-                </a>
               </div>
               <details className="text-[11px]">
                 <summary className="cursor-pointer text-win-muted">Más</summary>
@@ -240,8 +262,8 @@ function LicencesTable({ items, empty, onRenew }: { items: CaritoLicence[]; empt
                     <ConfirmForm
                       action={releaseCaritoLicenceDeviceAction}
                       fields={{ licenceId: l.id }}
-                      label="Liberar teléfono"
-                      question="El próximo teléfono que escriba esta licencia la usará. ¿Continuar?"
+                      label="Pasar a otro teléfono"
+                      question={`Para cuando ${l.name || "la persona"} cambia de teléfono: ${l.deviceModel ?? "el teléfono actual"} deja de abrir y la licencia queda libre para el próximo teléfono que la escriba. ¿Continuar?`}
                     />
                   )}
                   <ConfirmForm
@@ -270,6 +292,12 @@ function licenceStateLabel(l: CaritoLicence): string {
       return l.state.daysLeft === 0 ? "Último día" : `${l.state.daysLeft} ${l.state.daysLeft === 1 ? "día" : "días"}`;
     case "expired":
       return "Vencida";
+    case "trial":
+      return `Prueba · ${l.state.daysLeft === 0 ? "último día" : `${l.state.daysLeft} ${l.state.daysLeft === 1 ? "día" : "días"}`}`;
+    case "trial_waiting":
+      return `Prueba de ${l.state.days} días`;
+    case "trial_ended":
+      return "Prueba terminada";
     case "waiting":
       return "Sin usar";
   }
@@ -312,8 +340,8 @@ function CreateLicenceDialog({ onClose }: { onClose: () => void }) {
   }, []);
 
   const code = state?.ok ? state.code : undefined;
-  const untilDay = mode === "forever" ? null : mode === "date" ? day(date) : day(renewedUntil(null, Number(mode)));
-  const message = code ? licenceMessage("", code, untilDay) : "";
+  const untilDay = mode === "forever" || mode === "trial" ? null : mode === "date" ? day(date) : day(renewedUntil(null, Number(mode)));
+  const message = code ? licenceMessage("", code, untilDay, mode === "trial" ? 3 : null) : "";
 
   return (
     <dialog
@@ -356,7 +384,7 @@ function CreateLicenceDialog({ onClose }: { onClose: () => void }) {
                 <input type="text" name="device" maxLength={9} placeholder="K7P2Q" className="win-textbox uppercase" />
                 <span className="text-[11px] text-win-muted">Lo muestra la app en Ajustes &gt; Cuenta y licencia. Si no lo pones, la toma el primero que la escriba.</span>
               </label>
-              <DurationFields mode={mode} setMode={setMode} date={date} setDate={setDate} today={today} />
+              <DurationFields mode={mode} setMode={setMode} date={date} setDate={setDate} today={today} allowTrial />
               {state?.error && (
                 <p role="alert" className="wizard-alert">
                   {state.error}
@@ -376,10 +404,7 @@ function CreateLicenceDialog({ onClose }: { onClose: () => void }) {
         {code && (
           <div className="msgbox-buttons">
             <CopyCode code={code} />
-            <a className={`${smallLink} win-button--primary`} href={`https://wa.me/?text=${encodeURIComponent(message)}`} target="_blank" rel="noreferrer">
-              Mandar por WhatsApp
-            </a>
-            <button type="button" className="win-button" onClick={onClose}>
+            <button type="button" className="win-button win-button--primary" onClick={onClose}>
               Listo
             </button>
           </div>
@@ -542,17 +567,26 @@ function DurationFields({
   date,
   setDate,
   today,
+  allowTrial = false,
 }: {
   mode: string;
   setMode: (mode: string) => void;
   date: string;
   setDate: (date: string) => void;
   today: string;
+  /** Solo al crear: una prueba de 3 días que empieza cuando la persona la escribe. */
+  allowTrial?: boolean;
 }) {
   return (
     <>
       <fieldset className="grid grid-cols-2 gap-2">
         <legend className="mb-1 font-semibold">¿Cuánto dura?</legend>
+        {allowTrial && (
+          <label className="col-span-2 flex items-center gap-2">
+            <input type="radio" name="mode" value="trial" checked={mode === "trial"} onChange={() => setMode("trial")} />
+            Prueba gratis de 3 días <span className="text-win-muted">(empiezan cuando la escriba)</span>
+          </label>
+        )}
         {MONTHS.map((option) => (
           <label key={option.value} className="flex items-center gap-2">
             <input type="radio" name="mode" value={option.value} checked={mode === option.value} onChange={() => setMode(option.value)} />

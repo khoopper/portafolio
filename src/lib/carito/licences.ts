@@ -30,9 +30,11 @@ export interface CaritoLicence extends LicenceStateFields {
   librarySavedAt: string | null;
 }
 
-const COLUMNS =
+const BASE_COLUMNS =
   "id, code, name, device_code, device_model, app_version, licence_until, licence_forever, revoked_at, source, " +
   "created_at, activated_at, last_seen_at, device_changes, carito_licence_libraries(playlists, favorites, updated_at)";
+// trial_days llega con 20261018020000_carito_licence_trials.sql; sin esa migración la lista se lee igual, sin pruebas.
+const COLUMNS = `${BASE_COLUMNS}, trial_days`;
 
 interface Row extends LicenceStateFields {
   id: string;
@@ -51,7 +53,10 @@ interface Row extends LicenceStateFields {
 
 /** Todas las licencias, las más nuevas primero. Lanza si la base no responde (o falta la migración). */
 export async function listCaritoLicences(now: Date = new Date()): Promise<CaritoLicence[]> {
-  const { data, error } = await createServiceClient().from("carito_licences").select(COLUMNS).order("created_at", { ascending: false });
+  const db = createServiceClient();
+  const read = (columns: string) => db.from("carito_licences").select(columns).order("created_at", { ascending: false });
+  let { data, error } = await read(COLUMNS);
+  if (error?.message.includes("trial_days")) ({ data, error } = await read(BASE_COLUMNS));
   if (error) throw new Error(error.message);
   return (data as unknown as Row[]).map((row) => ({
     id: row.id,
@@ -65,6 +70,7 @@ export async function listCaritoLicences(now: Date = new Date()): Promise<Carito
     revoked_at: row.revoked_at,
     licence_until: row.licence_until,
     licence_forever: row.licence_forever,
+    trial_days: row.trial_days ?? null,
     activated: row.activated_at !== null || row.device_code !== null,
     createdAt: row.created_at,
     activatedAt: row.activated_at,
