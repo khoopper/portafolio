@@ -25,8 +25,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Crockford base32: sin I, L, O ni U, para que nada se lea como otra cosa (el alfabeto del SQL). */
 export const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-/** Una licencia: 9 caracteres (como `^[0-9A-HJKMNP-TV-Z]{9}$`). */
+/** Una licencia nueva: 9 caracteres. Las de antes (app 2.2 a 2.5) tienen 8: el SQL acepta `^[0-9A-HJKMNP-TV-Z]{8,9}$`. */
 export const LICENCE_CHARS = 9;
+export const OLD_LICENCE_CHARS = 8;
 /** El código de un solo uso que vincula el teléfono del dueño con el panel. */
 export const PAIRING_CHARS = 8;
 
@@ -35,9 +36,10 @@ export function cleanCode(text: string): string {
   return text.toUpperCase().replace(/[^0-9A-Z]/g, "");
 }
 
-/** «ABC-123-XYZ»: como se dicta y se lee una licencia. */
+/** «ABC-123-XYZ»: como se dicta y se lee una licencia; las de antes, como las recibió el amigo: «TJGM-ZY82». */
 export function formatLicenceCode(text: string): string {
-  return cleanCode(text).slice(0, LICENCE_CHARS).match(/.{1,3}/g)?.join("-") ?? "";
+  const code = cleanCode(text).slice(0, LICENCE_CHARS);
+  return code.match(code.length === OLD_LICENCE_CHARS ? /.{1,4}/g : /.{1,3}/g)?.join("-") ?? "";
 }
 
 /**

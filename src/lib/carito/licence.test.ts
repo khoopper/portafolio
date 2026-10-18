@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addMonths, licenceHasAccess, licenceInTrial, licenceStart, caritoToday, daysBetween, hasAccess, licenceState, memberState, parseGrant, renewedUntil, stateLabel } from "./licence";
+import { addMonths, formatLicenceCode, licenceHasAccess, licenceInTrial, licenceStart, caritoToday, daysBetween, hasAccess, licenceState, memberState, parseGrant, renewedUntil, stateLabel } from "./licence";
 
 // 2026-10-17 20:00 in El Salvador (UTC-6) is already the 18th in UTC.
 const NOW = new Date("2026-10-18T02:00:00Z");
@@ -76,5 +76,13 @@ describe("carito licence start", () => {
     expect(licenceStart({ source: "import", created_at: "2026-02-16T18:00:00Z", activated_at: "2026-10-18T03:00:00Z" })).toBe("2026-02-16");
     expect(licenceStart({ source: "panel", created_at: "2026-10-01T18:00:00Z", activated_at: "2026-10-18T03:00:00Z" })).toBe("2026-10-17");
     expect(licenceStart({ source: "app", created_at: "2026-10-01T18:00:00Z", activated_at: null })).toBeNull();
+  });
+});
+
+describe("carito licence codes", () => {
+  it("writes a new licence in threes and one of before in two fours", () => {
+    expect(formatLicenceCode("0eqww6v6z")).toBe("0EQ-WW6-V6Z");
+    expect(formatLicenceCode("TJGMZY82")).toBe("TJGM-ZY82");
+    expect(formatLicenceCode("tjgm-zy82")).toBe("TJGM-ZY82");
   });
 });

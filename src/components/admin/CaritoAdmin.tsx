@@ -199,7 +199,7 @@ function LicencesTable({ items, empty, onRenew }: { items: CaritoLicence[]; empt
               <span className="block font-mono text-[13px] font-semibold text-[#1e3287]">{formatLicenceCode(l.code)}</span>
               <span className="block text-win-muted">
                 Registrada {day(caritoToday(new Date(l.createdAt)))}
-                {l.source === "import" ? " en la 2.6" : l.source === "app" ? " en tu teléfono" : ""}
+                {l.source === "import" ? " (de antes)" : l.source === "app" ? " en tu teléfono" : ""}
               </span>
               <span className="block text-win-muted">{l.startedOn ? `Inicio ${day(l.startedOn)}` : "Sin empezar"}</span>
             </td>
