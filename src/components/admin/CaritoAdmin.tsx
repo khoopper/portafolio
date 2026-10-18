@@ -28,7 +28,7 @@ import {
   stateLabel,
   type MemberState,
 } from "@/lib/carito/licence";
-import type { CaritoLicence, LicenceState } from "@/lib/carito/licences";
+import type { CaritoLicence, CaritoRequest, LicenceState } from "@/lib/carito/licences";
 import type { CaritoMember } from "@/lib/carito/queries";
 
 const small = "win-button text-xs py-1 px-3";
@@ -62,8 +62,9 @@ const LICENCE_BADGE: Record<LicenceState["kind"], string> = {
  * muestra las licencias que el dueño reparte (el amigo escribe el código una vez y su teléfono queda ligado a ella, con sus playlists)
  * y, si hay, las cuentas de Google (prueba de 3 días). Las licencias de la 2.6 suben solas desde el teléfono del dueño.
  */
-export function CaritoAdmin({ members, licences }: { members: CaritoMember[]; licences: CaritoLicence[] | null }) {
-  const [creating, setCreating] = useState(false);
+export function CaritoAdmin({ members, licences, requests }: { members: CaritoMember[]; licences: CaritoLicence[] | null; requests: CaritoRequest[] }) {
+  // true: una licencia nueva; un código: la de ese teléfono, que la pidió.
+  const [creating, setCreating] = useState<boolean | string>(false);
   const [renewing, setRenewing] = useState<CaritoLicence | null>(null);
   const [granting, setGranting] = useState<CaritoMember | null>(null);
   const [pairing, setPairing] = useState(false);
@@ -123,6 +124,7 @@ export function CaritoAdmin({ members, licences }: { members: CaritoMember[]; li
       </div>
 
       {!licences && <MissingLicences />}
+      {requests.length > 0 && <RequestsTable items={requests} onCreate={setCreating} />}
 
       <Tabs
         label="Carito Music"
@@ -151,7 +153,7 @@ export function CaritoAdmin({ members, licences }: { members: CaritoMember[]; li
         }))}
       />
 
-      {creating && <CreateLicenceDialog onClose={() => setCreating(false)} />}
+      {creating && <CreateLicenceDialog device={typeof creating === "string" ? creating : undefined} onClose={() => setCreating(false)} />}
       {renewing && <RenewLicenceDialog licence={renewing} onClose={() => setRenewing(null)} />}
       {pairing && <PairingDialog onClose={() => setPairing(false)} />}
       {granting && <GrantDialog member={granting} onClose={() => setGranting(null)} />}
@@ -187,6 +189,41 @@ function licenceUntil(state: LicenceState): string | null {
   }
 }
 
+/**
+ * Teléfonos con una licencia de antes que no está en la lista: su app dice «Licencia antigua». «Crear licencia» le hace una nueva con
+ * el código de ese teléfono, y el teléfono la toma solo en su próxima comprobación (también se le puede mandar el código).
+ */
+function RequestsTable({ items, onCreate }: { items: CaritoRequest[]; onCreate: (device: string) => void }) {
+  return (
+    <section className="mb-4 rounded border border-[#e5c07b] bg-[#fff8e6] p-3">
+      <h3 className="text-xs font-semibold text-[#7a5200]">Piden licencia nueva ({items.length})</h3>
+      <p className="mb-2 text-[11px] text-win-muted">
+        Tenían una licencia antigua que no está en la lista. Créales una: su teléfono la toma solo, sin escribirla.
+      </p>
+      <DetailsTable head={["Teléfono", "Versión", "Lo pidió", "Acciones"]}>
+        {items.map((r) => (
+          <tr key={r.deviceCode} className="align-top hover:bg-[#fdf1d2]">
+            <td className="p-2.5">
+              <span className="block">{r.deviceModel ?? "Teléfono"}</span>
+              <span className="block font-mono text-win-muted">{r.deviceCode}</span>
+            </td>
+            <td className="p-2.5">{r.appVersion ? `v${r.appVersion}` : "—"}</td>
+            <td className="whitespace-nowrap p-2.5">
+              <span className="block">{moment(r.askedAt)}</span>
+              {r.lastAskedAt !== r.askedAt && <span className="block text-win-muted">otra vez {moment(r.lastAskedAt)}</span>}
+            </td>
+            <td className="p-2.5">
+              <button type="button" className="win-button win-button--primary text-xs" onClick={() => onCreate(r.deviceCode)}>
+                Crear licencia
+              </button>
+            </td>
+          </tr>
+        ))}
+      </DetailsTable>
+    </section>
+  );
+}
+
 function LicencesTable({ items, empty, onRenew }: { items: CaritoLicence[]; empty: string; onRenew: (l: CaritoLicence) => void }) {
   if (!items.length) return <p className="p-4 text-sm text-win-muted">{empty}</p>;
   return (
@@ -199,13 +236,17 @@ function LicencesTable({ items, empty, onRenew }: { items: CaritoLicence[]; empt
               <span className="block font-mono text-[13px] font-semibold text-[#1e3287]">{formatLicenceCode(l.code)}</span>
               <span className="block text-win-muted">
                 Registrada {day(caritoToday(new Date(l.createdAt)))}
-                {l.source === "import" ? " (de antes)" : l.source === "app" ? " en tu teléfono" : ""}
+                {l.source === "app" ? " en tu teléfono" : ""}
               </span>
               <span className="block text-win-muted">{l.startedOn ? `Inicio ${day(l.startedOn)}` : "Sin empezar"}</span>
             </td>
             <td className="p-2.5 font-semibold">{l.name || <span className="font-normal text-win-muted">—</span>}</td>
             <td className="p-2.5">
-              <span className="block">{l.deviceModel ?? <span className="text-win-muted">Sin escribir todavía</span>}</span>
+              <span className="block">
+                {l.deviceModel ?? (
+                  <span className="text-win-muted">{l.source === "import" ? "Se activa sola cuando abra Carito" : "Sin escribir todavía"}</span>
+                )}
+              </span>
               {l.deviceCode && (
                 <span className="block font-mono text-win-muted">
                   {l.deviceCode}
@@ -236,7 +277,7 @@ function LicencesTable({ items, empty, onRenew }: { items: CaritoLicence[]; empt
                   <span className="block">{moment(l.lastSeenAt)}</span>
                 </>
               ) : (
-                <span className="text-win-muted">Nunca la escribió</span>
+                <span className="text-win-muted">{l.source === "import" ? "Aún no se conecta" : "Nunca la escribió"}</span>
               )}
             </td>
             <td className="space-y-1 p-2.5">
@@ -329,7 +370,7 @@ function CopyCode({ code }: { code: string }) {
 // --- Dar / renovar / vincular ----------------------------------------------------------------------------------------------
 
 /** Crear una licencia: para quién, para qué teléfono (si se sabe) y cuánto dura. Al final muestra el código para mandarlo. */
-function CreateLicenceDialog({ onClose }: { onClose: () => void }) {
+function CreateLicenceDialog({ device, onClose }: { device?: string; onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [state, formAction, pending] = useActionState(createCaritoLicenceAction, null);
   const [mode, setMode] = useState<string>("3");
@@ -382,7 +423,7 @@ function CreateLicenceDialog({ onClose }: { onClose: () => void }) {
               </label>
               <label className="wizard-field">
                 Código del teléfono (opcional)
-                <input type="text" name="device" maxLength={9} placeholder="K7P2Q" className="win-textbox uppercase" />
+                <input type="text" name="device" maxLength={9} placeholder="K7P2Q" defaultValue={device} className="win-textbox uppercase" />
                 <span className="text-[11px] text-win-muted">Lo muestra la app en Ajustes &gt; Cuenta y licencia. Si no lo pones, la toma el primero que la escriba.</span>
               </label>
               <DurationFields mode={mode} setMode={setMode} date={date} setDate={setDate} today={today} allowTrial />

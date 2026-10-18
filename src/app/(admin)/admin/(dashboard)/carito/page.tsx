@@ -3,7 +3,7 @@ import { IconWindowsMediaPlayer } from "@/components/icons/admin-icons";
 import { AeroWindow } from "@/components/win7/AeroWindow";
 import { count } from "@/lib/count";
 import { hasAccess } from "@/lib/carito/licence";
-import { listCaritoLicences, type CaritoLicence } from "@/lib/carito/licences";
+import { listCaritoLicences, listCaritoRequests, type CaritoLicence } from "@/lib/carito/licences";
 import { listCaritoMembers, type CaritoMember } from "@/lib/carito/queries";
 import { isSupabaseConfigured } from "@/lib/supabase";
 
@@ -22,6 +22,7 @@ export default async function AdminCaritoPage() {
         return null;
       })
     : [];
+  const requests = licences ? await listCaritoRequests(licences) : [];
   const active = members?.filter((m) => hasAccess(m.state)).length ?? 0;
   const trials = members?.filter((m) => m.state.kind === "trial").length ?? 0;
 
@@ -46,7 +47,7 @@ export default async function AdminCaritoPage() {
           </a>
         </div>
       ) : configured ? (
-        <CaritoAdmin members={members} licences={licences} />
+        <CaritoAdmin members={members} licences={licences} requests={requests} />
       ) : (
         <p className="p-5 text-sm">Supabase no está configurado en este entorno.</p>
       )}

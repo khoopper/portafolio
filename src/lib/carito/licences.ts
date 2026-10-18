@@ -85,3 +85,34 @@ export async function listCaritoLicences(now: Date = new Date()): Promise<Carito
     librarySavedAt: row.carito_licence_libraries?.updated_at ?? null,
   }));
 }
+
+/** Un teléfono con una licencia de antes que no está en la lista: la app le dice «Licencia antigua» y espera una nueva. */
+export interface CaritoRequest {
+  deviceCode: string;
+  deviceModel: string | null;
+  appVersion: string | null;
+  askedAt: string;
+  lastAskedAt: string;
+}
+
+/**
+ * Los que piden una licencia nueva y todavía no tienen una viva (las de [licences] sin revocar), los más recientes primero. Sin la
+ * migración `20261018030000_carito_old_licences.sql` no hay pedidos: lista vacía, el resto del panel sigue igual.
+ */
+export async function listCaritoRequests(licences: CaritoLicence[]): Promise<CaritoRequest[]> {
+  const { data, error } = await createServiceClient()
+    .from("carito_licence_requests")
+    .select("device_code, device_model, app_version, asked_at, last_asked_at")
+    .order("last_asked_at", { ascending: false });
+  if (error || !data) return [];
+  const taken = new Set(licences.filter((l) => l.state.kind !== "revoked" && l.deviceCode).map((l) => l.deviceCode));
+  return data
+    .filter((row) => !taken.has(row.device_code))
+    .map((row) => ({
+      deviceCode: row.device_code,
+      deviceModel: row.device_model,
+      appVersion: row.app_version,
+      askedAt: row.asked_at,
+      lastAskedAt: row.last_asked_at,
+    }));
+}
