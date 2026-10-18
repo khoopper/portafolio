@@ -25,8 +25,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Crockford base32: sin I, L, O ni U, para que nada se lea como otra cosa (el alfabeto del SQL). */
 export const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-/** Una licencia: 9 caracteres (como `^[0-9A-HJKMNP-TV-Z]{9}$`). */
+/** Una licencia nueva: 9 caracteres. Las de antes (app 2.2 a 2.5) tienen 8: el SQL acepta `^[0-9A-HJKMNP-TV-Z]{8,9}$`. */
 export const LICENCE_CHARS = 9;
+export const OLD_LICENCE_CHARS = 8;
 /** El código de un solo uso que vincula el teléfono del dueño con el panel. */
 export const PAIRING_CHARS = 8;
 
@@ -35,18 +36,35 @@ export function cleanCode(text: string): string {
   return text.toUpperCase().replace(/[^0-9A-Z]/g, "");
 }
 
-/** «ABC-123-XYZ»: como se dicta y se lee una licencia. */
+/** «ABC-123-XYZ»: como se dicta y se lee una licencia; las de antes, como las recibió el amigo: «TJGM-ZY82». */
 export function formatLicenceCode(text: string): string {
-  return cleanCode(text).slice(0, LICENCE_CHARS).match(/.{1,3}/g)?.join("-") ?? "";
+  const code = cleanCode(text).slice(0, LICENCE_CHARS);
+  return code.match(code.length === OLD_LICENCE_CHARS ? /.{1,4}/g : /.{1,3}/g)?.join("-") ?? "";
 }
 
-/** El mensaje que se le manda al amigo (el mismo que arma la app del dueño al compartir por WhatsApp). [untilDay] ya viene escrito («17 nov 2026»). */
-export function licenceMessage(name: string, code: string, untilDay: string | null): string {
+/**
+ * El mensaje que se le manda al amigo (el mismo que arma la app del dueño al compartir). [untilDay] ya viene escrito
+ * («17 nov 2026»); con [trialDays] es una prueba gratis, que empieza a contar el día que la escribe.
+ */
+export function licenceMessage(name: string, code: string, untilDay: string | null, trialDays: number | null = null): string {
   const who = name.trim() ? `${name.trim()}, tu` : "Tu";
-  const length = untilDay ? `Hasta el ${untilDay}` : "Sin fecha de vencimiento";
+  const length = trialDays
+    ? `Prueba gratis de ${trialDays} días, desde el día que la escribas`
+    : untilDay
+      ? `Hasta el ${untilDay}`
+      : "Sin fecha de vencimiento";
   return `${who} licencia de Carito Music es: ${formatLicenceCode(code)}\n${length}. Escríbela en la app, donde dice «Introduce tu licencia».`;
 }
 
+
+/**
+ * El día en que empezó una licencia ("YYYY-MM-DD" en El Salvador), igual que carito_licence_start en el SQL: el día de la 2.6 para
+ * las importadas; si no, el primero en que un teléfono la escribió (null: nadie todavía).
+ */
+export function licenceStart(row: { source: string; created_at: string; activated_at: string | null }): string | null {
+  const start = row.source === "import" ? row.created_at : row.activated_at;
+  return start ? caritoToday(new Date(start)) : null;
+}
 
 /** "2026-10-17": the date in El Salvador at [now]. */
 export function caritoToday(now: Date = new Date()): string {
@@ -92,25 +110,38 @@ export type LicenceState =
   | { kind: "forever" }
   | { kind: "licence"; until: string; daysLeft: number }
   | { kind: "expired"; until: string }
+  /** Una prueba que todavía nadie escribió: sus días empiezan cuando un teléfono la escribe. */
+  | { kind: "trial_waiting"; days: number }
+  | { kind: "trial"; until: string; daysLeft: number }
+  | { kind: "trial_ended"; until: string }
   | { kind: "waiting" };
 
-/** Lo que decide el estado de una licencia sin cuenta (aquí no hay prueba de 3 días). */
+/** Lo que decide el estado de una licencia sin cuenta; `trial_days` marca una prueba (3 días desde que se escribe). */
 export interface LicenceStateFields {
   revoked_at: string | null;
   licence_until: string | null;
   licence_forever: boolean;
+  trial_days?: number | null;
 }
 
 export function licenceState(fields: LicenceStateFields, now: Date = new Date()): LicenceState {
   if (fields.revoked_at) return { kind: "revoked" };
   if (fields.licence_forever) return { kind: "forever" };
   const today = caritoToday(now);
+  if (fields.trial_days) {
+    if (!fields.licence_until) return { kind: "trial_waiting", days: fields.trial_days };
+    if (fields.licence_until >= today) return { kind: "trial", until: fields.licence_until, daysLeft: daysBetween(today, fields.licence_until) };
+    return { kind: "trial_ended", until: fields.licence_until };
+  }
   if (fields.licence_until && fields.licence_until >= today) {
     return { kind: "licence", until: fields.licence_until, daysLeft: daysBetween(today, fields.licence_until) };
   }
   if (fields.licence_until) return { kind: "expired", until: fields.licence_until };
   return { kind: "waiting" };
 }
+
+/** Una prueba de 3 días, empezada o no. */
+export const licenceInTrial = (state: LicenceState) => state.kind === "trial" || state.kind === "trial_waiting";
 
 export const hasAccess = (state: MemberState) => state.kind === "forever" || state.kind === "licence" || state.kind === "trial";
 

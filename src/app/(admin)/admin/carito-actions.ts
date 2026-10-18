@@ -16,6 +16,9 @@ export interface CaritoCodeResult extends CaritoActionResult {
   code?: string;
 }
 
+/** Lo que dura una prueba gratis, desde que el amigo escribe la licencia. */
+const TRIAL_DAYS = 3;
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const userIdOf = (formData: FormData) => {
   const id = String(formData.get("userId") ?? "");
@@ -113,8 +116,10 @@ export async function createCaritoLicenceAction(_prev: CaritoCodeResult | null, 
   if (!(await hasAdminSession())) return { ok: false, error: "Sesión administrativa no válida." };
   const { name, device, error: badDevice } = licenceInput(formData);
   if (badDevice) return { ok: false, error: badDevice };
-  const grant = parseGrant(formData.get("mode"), formData.get("day"));
-  if (!grant) return { ok: false, error: "Elige una duración válida." };
+  // "Prueba de 3 días": sus días empiezan cuando un teléfono la escribe (carito_licence_activate).
+  const trial = formData.get("mode") === "trial";
+  const grant = trial ? null : parseGrant(formData.get("mode"), formData.get("day"));
+  if (!trial && !grant) return { ok: false, error: "Elige una duración válida." };
 
   const code = newLicenceCode();
   const { error } = await createServiceClient()
@@ -123,8 +128,9 @@ export async function createCaritoLicenceAction(_prev: CaritoCodeResult | null, 
       code,
       name,
       device_code: device,
-      licence_forever: grant.kind === "forever",
-      licence_until: grant.kind === "forever" ? null : grant.kind === "date" ? grant.day : renewedUntil(null, grant.months),
+      licence_forever: grant?.kind === "forever",
+      licence_until: !grant || grant.kind === "forever" ? null : grant.kind === "date" ? grant.day : renewedUntil(null, grant.months),
+      ...(trial ? { trial_days: TRIAL_DAYS } : {}),
       source: "panel",
     });
   if (error) return { ok: false, error: "No se pudo crear la licencia. Intenta de nuevo." };
@@ -150,7 +156,8 @@ export async function renewCaritoLicenceAction(_prev: CaritoActionResult | null,
           licence_forever: false,
           licence_until: grant.kind === "date" ? grant.day : renewedUntil(licence.licence_forever ? null : licence.licence_until, grant.months),
         };
-  const { error } = await db.from("carito_licences").update({ ...values, revoked_at: null }).eq("id", id);
+  // Una prueba con fecha (o sin límite) pasa a ser licencia.
+  const { error } = await db.from("carito_licences").update({ ...values, trial_days: null, revoked_at: null }).eq("id", id);
   if (error) return { ok: false, error: "No se pudo guardar la licencia. Intenta de nuevo." };
   revalidatePath("/admin/carito");
   return { ok: true };

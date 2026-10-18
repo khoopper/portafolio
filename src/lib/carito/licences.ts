@@ -1,5 +1,5 @@
 import { createServiceClient } from "@/lib/supabase";
-import { licenceState, type LicenceState, type LicenceStateFields } from "./licence";
+import { licenceStart, licenceState, type LicenceState, type LicenceStateFields } from "./licence";
 
 /**
  * Las licencias que el dueño reparte sin cuenta de Google, como las lista el panel: quién la tiene, hasta cuándo, en qué
@@ -21,8 +21,11 @@ export interface CaritoLicence extends LicenceStateFields {
   state: LicenceState;
   /** Un teléfono ya la escribió (o estaba ligada a él desde que se creó). */
   activated: boolean;
+  /** Cuándo se registró: cuando se creó o, las de la 2.6, el día en que el dueño la dio entonces. */
   createdAt: string;
   activatedAt: string | null;
+  /** El día en que empezó ("YYYY-MM-DD" en El Salvador): el de la 2.6, o el primero en que un teléfono la escribió. */
+  startedOn: string | null;
   lastSeenAt: string | null;
   deviceChanges: number;
   playlists: number;
@@ -30,9 +33,11 @@ export interface CaritoLicence extends LicenceStateFields {
   librarySavedAt: string | null;
 }
 
-const COLUMNS =
+const BASE_COLUMNS =
   "id, code, name, device_code, device_model, app_version, licence_until, licence_forever, revoked_at, source, " +
   "created_at, activated_at, last_seen_at, device_changes, carito_licence_libraries(playlists, favorites, updated_at)";
+// trial_days llega con 20261018020000_carito_licence_trials.sql; sin esa migración la lista se lee igual, sin pruebas.
+const COLUMNS = `${BASE_COLUMNS}, trial_days`;
 
 interface Row extends LicenceStateFields {
   id: string;
@@ -51,7 +56,10 @@ interface Row extends LicenceStateFields {
 
 /** Todas las licencias, las más nuevas primero. Lanza si la base no responde (o falta la migración). */
 export async function listCaritoLicences(now: Date = new Date()): Promise<CaritoLicence[]> {
-  const { data, error } = await createServiceClient().from("carito_licences").select(COLUMNS).order("created_at", { ascending: false });
+  const db = createServiceClient();
+  const read = (columns: string) => db.from("carito_licences").select(columns).order("created_at", { ascending: false });
+  let { data, error } = await read(COLUMNS);
+  if (error?.message.includes("trial_days")) ({ data, error } = await read(BASE_COLUMNS));
   if (error) throw new Error(error.message);
   return (data as unknown as Row[]).map((row) => ({
     id: row.id,
@@ -65,13 +73,46 @@ export async function listCaritoLicences(now: Date = new Date()): Promise<Carito
     revoked_at: row.revoked_at,
     licence_until: row.licence_until,
     licence_forever: row.licence_forever,
+    trial_days: row.trial_days ?? null,
     activated: row.activated_at !== null || row.device_code !== null,
     createdAt: row.created_at,
     activatedAt: row.activated_at,
+    startedOn: licenceStart(row),
     lastSeenAt: row.last_seen_at,
     deviceChanges: row.device_changes,
     playlists: row.carito_licence_libraries?.playlists ?? 0,
     favorites: row.carito_licence_libraries?.favorites ?? 0,
     librarySavedAt: row.carito_licence_libraries?.updated_at ?? null,
   }));
+}
+
+/** Un teléfono con una licencia de antes que no está en la lista: la app le dice «Licencia antigua» y espera una nueva. */
+export interface CaritoRequest {
+  deviceCode: string;
+  deviceModel: string | null;
+  appVersion: string | null;
+  askedAt: string;
+  lastAskedAt: string;
+}
+
+/**
+ * Los que piden una licencia nueva y todavía no tienen una viva (las de [licences] sin revocar), los más recientes primero. Sin la
+ * migración `20261018030000_carito_old_licences.sql` no hay pedidos: lista vacía, el resto del panel sigue igual.
+ */
+export async function listCaritoRequests(licences: CaritoLicence[]): Promise<CaritoRequest[]> {
+  const { data, error } = await createServiceClient()
+    .from("carito_licence_requests")
+    .select("device_code, device_model, app_version, asked_at, last_asked_at")
+    .order("last_asked_at", { ascending: false });
+  if (error || !data) return [];
+  const taken = new Set(licences.filter((l) => l.state.kind !== "revoked" && l.deviceCode).map((l) => l.deviceCode));
+  return data
+    .filter((row) => !taken.has(row.device_code))
+    .map((row) => ({
+      deviceCode: row.device_code,
+      deviceModel: row.device_model,
+      appVersion: row.app_version,
+      askedAt: row.asked_at,
+      lastAskedAt: row.last_asked_at,
+    }));
 }

@@ -1,9 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { addMonths, caritoToday, daysBetween, hasAccess, licenceState, memberState, parseGrant, renewedUntil, stateLabel } from "./licence";
+import { addMonths, formatLicenceCode, licenceHasAccess, licenceInTrial, licenceStart, caritoToday, daysBetween, hasAccess, licenceState, memberState, parseGrant, renewedUntil, stateLabel } from "./licence";
 
 // 2026-10-17 20:00 in El Salvador (UTC-6) is already the 18th in UTC.
 const NOW = new Date("2026-10-18T02:00:00Z");
 const base = { revoked_at: null, licence_forever: false, licence_until: null, trial_ends_at: null };
+
+describe("carito trial licences", () => {
+  const plain = { revoked_at: null, licence_forever: false, licence_until: null };
+  it("a trial starts when it is written, not when it is made", () => {
+    expect(licenceState({ ...plain, trial_days: 3 }, NOW)).toEqual({ kind: "trial_waiting", days: 3 });
+    expect(licenceState({ ...plain, trial_days: 3, licence_until: "2026-10-20" }, NOW)).toEqual({ kind: "trial", until: "2026-10-20", daysLeft: 3 });
+    expect(licenceState({ ...plain, trial_days: 3, licence_until: "2026-10-16" }, NOW).kind).toBe("trial_ended");
+    expect(licenceInTrial(licenceState({ ...plain, trial_days: 3 }, NOW))).toBe(true);
+    expect(licenceHasAccess(licenceState({ ...plain, trial_days: 3, licence_until: "2026-10-20" }, NOW))).toBe(false);
+  });
+});
 
 describe("carito licence", () => {
   it("uses El Salvador's date", () => {
@@ -56,5 +67,22 @@ describe("carito licence", () => {
     expect(licenceState({ ...licence, licence_until: "2026-11-17" }, NOW)).toEqual({ kind: "licence", until: "2026-11-17", daysLeft: 31 });
     expect(licenceState({ ...licence, licence_until: "2026-10-16" }, NOW).kind).toBe("expired");
     expect(licenceState(licence, NOW).kind).toBe("waiting");
+  });
+});
+
+describe("carito licence start", () => {
+  it("is the 2.6 day for imported licences and the first phone day for the rest", () => {
+    // 18:00 UTC is noon in El Salvador; 03:00 UTC is still the evening before there.
+    expect(licenceStart({ source: "import", created_at: "2026-02-16T18:00:00Z", activated_at: "2026-10-18T03:00:00Z" })).toBe("2026-02-16");
+    expect(licenceStart({ source: "panel", created_at: "2026-10-01T18:00:00Z", activated_at: "2026-10-18T03:00:00Z" })).toBe("2026-10-17");
+    expect(licenceStart({ source: "app", created_at: "2026-10-01T18:00:00Z", activated_at: null })).toBeNull();
+  });
+});
+
+describe("carito licence codes", () => {
+  it("writes a new licence in threes and one of before in two fours", () => {
+    expect(formatLicenceCode("0eqww6v6z")).toBe("0EQ-WW6-V6Z");
+    expect(formatLicenceCode("TJGMZY82")).toBe("TJGM-ZY82");
+    expect(formatLicenceCode("tjgm-zy82")).toBe("TJGM-ZY82");
   });
 });
