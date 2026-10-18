@@ -44,117 +44,108 @@ const LICENCE_BADGE: Record<LicenceState["kind"], string> = {
 };
 
 /**
- * Carito Music: en **Personas** están los que entran con su cuenta de Google (prueba de 3 días, dar / renovar / revocar),
- * y en **Licencias** las que el dueño reparte sin cuenta: el amigo escribe el código una vez y su teléfono queda ligado a
- * ella, con sus playlists. Las licencias de la 2.6 suben solas desde el teléfono del dueño.
+ * Carito Music: todas las licencias en un solo lugar, en el orden Todos · Con acceso · En prueba · Revocados · Sin acceso. Cada pestaña
+ * muestra las licencias que el dueño reparte (el amigo escribe el código una vez y su teléfono queda ligado a ella, con sus playlists)
+ * y, si hay, las cuentas de Google (prueba de 3 días). Las licencias de la 2.6 suben solas desde el teléfono del dueño.
  */
 export function CaritoAdmin({ members, licences }: { members: CaritoMember[]; licences: CaritoLicence[] | null }) {
+  const [creating, setCreating] = useState(false);
+  const [renewing, setRenewing] = useState<CaritoLicence | null>(null);
+  const [granting, setGranting] = useState<CaritoMember | null>(null);
+  const [pairing, setPairing] = useState(false);
+  const all = licences ?? [];
+
+  const groups = [
+    { id: "todos", label: "Todos", licences: all, members, empty: "Todavía no hay licencias ni cuentas." },
+    {
+      id: "activos",
+      label: "Con acceso",
+      licences: all.filter((l) => licenceHasAccess(l.state)),
+      members: members.filter((m) => hasAccess(m.state) && m.state.kind !== "trial"),
+      empty: "Nadie tiene acceso todavía.",
+    },
+    { id: "prueba", label: "En prueba", licences: [], members: members.filter((m) => m.state.kind === "trial"), empty: "Nadie está en prueba." },
+    {
+      id: "revocados",
+      label: "Revocados",
+      licences: all.filter((l) => l.state.kind === "revoked"),
+      members: members.filter((m) => m.state.kind === "revoked"),
+      empty: "No revocaste ninguna licencia.",
+    },
+    {
+      id: "sin",
+      label: "Sin acceso",
+      licences: all.filter((l) => !licenceHasAccess(l.state) && l.state.kind !== "revoked"),
+      members: members.filter((m) => !hasAccess(m.state) && m.state.kind !== "revoked"),
+      empty: "Nadie se quedó sin acceso.",
+    },
+  ];
+
   return (
     <div className="p-5">
-      <div className="mb-4 border-b border-[#d5dfe5] pb-3">
-        <h2 className="win-h1">Carito Music</h2>
-        <p className="mt-0.5 text-xs text-win-muted">
-          Quien entra con su cuenta de Google aparece en Personas (3 días de prueba, una por teléfono). Quien no tiene cuenta recibe una
-          licencia y la escribe una vez en la app: su teléfono queda ligado a ella. Una licencia revocada deja de abrir en cuanto el
-          teléfono se conecta; sin conexión, la app comprueba a más tardar cada 30 días.
-        </p>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-[#d5dfe5] pb-3">
+        <div className="max-w-2xl">
+          <h2 className="win-h1">Carito Music</h2>
+          <p className="mt-0.5 text-xs text-win-muted">
+            El amigo escribe su licencia una vez en la app: su teléfono queda ligado a ella y sus playlists se guardan con ella. Una licencia
+            revocada deja de abrir en cuanto el teléfono se conecta (sin conexión, a más tardar en 30 días). Lo mismo se maneja desde el
+            teléfono del dueño, en Ajustes &gt; Cuenta y licencia.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="win-button win-button--primary text-xs" onClick={() => setCreating(true)} disabled={!licences}>
+            Crear licencia
+          </button>
+          <button type="button" className="win-button text-xs" onClick={() => setPairing(true)} disabled={!licences}>
+            Vincular mi teléfono
+          </button>
+        </div>
       </div>
+
+      {!licences && <MissingLicences />}
 
       <Tabs
         label="Carito Music"
-        tabs={[
-          { id: "personas", label: `Personas registradas (${members.length})`, content: <MembersPanel members={members} /> },
-          {
-            id: "licencias",
-            label: `Licencias (${licences?.length ?? 0})`,
-            content: licences ? <LicencesPanel licences={licences} /> : <MissingLicences />,
-          },
-        ]}
-      />
-    </div>
-  );
-}
-
-/** Falta la segunda migración (`20261018010000_carito_licences.sql`): la pestaña lo dice sin romper la página. */
-function MissingLicences() {
-  return (
-    <p className="p-4 text-sm text-win-muted">
-      No se pudieron leer las licencias. Si es la primera vez, ejecuta <code>supabase/migrations/20261018010000_carito_licences.sql</code> en
-      el SQL Editor de Supabase y recarga; si no, Supabase tardó en responder.
-    </p>
-  );
-}
-
-// --- Personas registradas (cuentas de Google) ------------------------------------------------------------------------------
-
-function MembersPanel({ members }: { members: CaritoMember[] }) {
-  const [granting, setGranting] = useState<CaritoMember | null>(null);
-  const withAccess = members.filter((m) => hasAccess(m.state));
-  const trials = members.filter((m) => m.state.kind === "trial");
-  const without = members.filter((m) => !hasAccess(m.state) && m.state.kind !== "revoked");
-  const revoked = members.filter((m) => m.state.kind === "revoked");
-  const table = (list: CaritoMember[], empty: string) => <MembersTable items={list} empty={empty} onGrant={setGranting} />;
-
-  return (
-    <div>
-      <Tabs
-        label="Personas registradas"
-        tabs={[
-          { id: "sin", label: `Sin acceso (${without.length})`, content: table(without, "Nadie está esperando una licencia.") },
-          { id: "activos", label: `Con acceso (${withAccess.length})`, content: table(withAccess, "Nadie tiene acceso todavía.") },
-          { id: "prueba", label: `En prueba (${trials.length})`, content: table(trials, "Nadie está en prueba.") },
-          { id: "revocados", label: `Revocados (${revoked.length})`, content: table(revoked, "No revocaste ninguna licencia.") },
-          { id: "todos", label: `Todos (${members.length})`, content: table(members, "Todavía no se registró nadie.") },
-        ]}
-      />
-      {granting && <GrantDialog member={granting} onClose={() => setGranting(null)} />}
-    </div>
-  );
-}
-
-// --- Licencias sin cuenta de Google ----------------------------------------------------------------------------------------
-
-function LicencesPanel({ licences }: { licences: CaritoLicence[] }) {
-  const [creating, setCreating] = useState(false);
-  const [renewing, setRenewing] = useState<CaritoLicence | null>(null);
-  const [pairing, setPairing] = useState(false);
-
-  const unused = licences.filter((l) => !l.activated && l.state.kind !== "revoked");
-  const active = licences.filter((l) => l.activated && licenceHasAccess(l.state));
-  const expired = licences.filter((l) => l.activated && l.state.kind === "expired");
-  const revoked = licences.filter((l) => l.state.kind === "revoked");
-  const table = (list: CaritoLicence[], empty: string) => <LicencesTable items={list} empty={empty} onRenew={setRenewing} />;
-
-  return (
-    <div>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <button type="button" className="win-button win-button--primary text-xs" onClick={() => setCreating(true)}>
-          Crear licencia
-        </button>
-        <button type="button" className="win-button text-xs" onClick={() => setPairing(true)}>
-          Vincular mi teléfono
-        </button>
-        <p className="w-full text-xs text-win-muted">
-          El amigo la escribe una vez en la app («Introduce tu licencia») y su teléfono queda ligado a ella, con sus playlists guardadas.
-          «Vincular mi teléfono» da el código de 15 minutos que se escribe en la app del dueño para manejar todo desde ahí.
-        </p>
-      </div>
-
-      <Tabs
-        label="Licencias"
-        tabs={[
-          { id: "sinusar", label: `Sin escribir (${unused.length})`, content: table(unused, "Nadie tiene una licencia esperando.") },
-          { id: "activas", label: `Con acceso (${active.length})`, content: table(active, "Ninguna licencia está abierta todavía.") },
-          { id: "vencidas", label: `Vencidas (${expired.length})`, content: table(expired, "No hay licencias vencidas.") },
-          { id: "revocadas", label: `Revocadas (${revoked.length})`, content: table(revoked, "No revocaste ninguna licencia.") },
-          { id: "todas", label: `Todas (${licences.length})`, content: table(licences, "Todavía no creaste ninguna licencia.") },
-        ]}
+        tabs={groups.map((g) => ({
+          id: g.id,
+          label: `${g.label} (${g.licences.length + g.members.length})`,
+          content:
+            g.licences.length + g.members.length === 0 ? (
+              <p className="p-4 text-sm text-win-muted">{g.empty}</p>
+            ) : (
+              <div className="space-y-4">
+                {g.licences.length > 0 && (
+                  <section>
+                    <h3 className="mb-1.5 text-xs font-semibold text-[#1e3287]">Licencias ({g.licences.length})</h3>
+                    <LicencesTable items={g.licences} empty="" onRenew={setRenewing} />
+                  </section>
+                )}
+                {g.members.length > 0 && (
+                  <section>
+                    <h3 className="mb-1.5 text-xs font-semibold text-[#1e3287]">Cuentas de Google ({g.members.length})</h3>
+                    <MembersTable items={g.members} empty="" onGrant={setGranting} />
+                  </section>
+                )}
+              </div>
+            ),
+        }))}
       />
 
       {creating && <CreateLicenceDialog onClose={() => setCreating(false)} />}
       {renewing && <RenewLicenceDialog licence={renewing} onClose={() => setRenewing(null)} />}
       {pairing && <PairingDialog onClose={() => setPairing(false)} />}
+      {granting && <GrantDialog member={granting} onClose={() => setGranting(null)} />}
     </div>
+  );
+}
+
+/** Falta la segunda migración (`20261018010000_carito_licences.sql`): el panel lo dice sin romper la página. */
+function MissingLicences() {
+  return (
+    <p className="mb-3 p-1 text-sm text-win-muted">
+      No se pudieron leer las licencias. Si es la primera vez, ejecuta <code>supabase/migrations/20261018010000_carito_licences.sql</code> en
+      el SQL Editor de Supabase y recarga; si no, Supabase tardó en responder.
+    </p>
   );
 }
 
@@ -225,7 +216,7 @@ function LicencesTable({ items, empty, onRenew }: { items: CaritoLicence[]; empt
             <td className="space-y-1 p-2.5">
               <div className="flex flex-wrap gap-1">
                 <button type="button" className={`${small} win-button--primary`} onClick={() => onRenew(l)}>
-                  Renovar
+                  Cambiar fecha
                 </button>
                 {l.state.kind === "revoked" ? (
                   <ConfirmForm action={setCaritoLicenceRevokedAction} fields={{ licenceId: l.id, revoke: "0" }} label="Restaurar" />
@@ -428,7 +419,7 @@ function RenewLicenceDialog({ licence, onClose }: { licence: CaritoLicence; onCl
     >
       <header className="aero-titlebar">
         <h2 id="renew-licence-title" className="aero-title pl-1 text-[13px]">
-          Renovar licencia
+          Cambiar fecha
         </h2>
         <div className="caption-btns">
           <button type="button" className="caption-btn caption-btn--close" aria-label="Cerrar" onClick={onClose}>
@@ -469,7 +460,7 @@ function RenewLicenceDialog({ licence, onClose }: { licence: CaritoLicence; onCl
               Cancelar
             </button>
             <button type="submit" className="win-button win-button--primary" disabled={pending}>
-              {pending ? "Guardando…" : "Renovar"}
+              {pending ? "Guardando…" : "Guardar"}
             </button>
           </div>
         </form>
