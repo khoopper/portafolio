@@ -74,6 +74,8 @@ const nextConfig: NextConfig = {
       { source: "/auth/:path*", headers: noReferrer },
       // Admin screens never belong in search results.
       { source: "/admin/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
+      // Carito Music's download page is private: shared by its QR code and link, never listed in search results.
+      { source: "/carito/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow, noimageindex" }] },
     ];
   },
 };
