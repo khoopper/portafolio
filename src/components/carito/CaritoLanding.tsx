@@ -230,7 +230,7 @@ export function CaritoLanding({ android, pc, allReleases }: { android: CaritoDow
             {[
               { title: "Prueba gratis de 3 días", text: "Pídela y empieza a escuchar el mismo día." },
               { title: "Teléfono y PC", text: "Tus playlists y favoritas llegan a los dos." },
-              { title: "Plan familiar, muy pronto", text: "Tú y 2 personas más, cada quien con su propio perfil." },
+              { title: "Plan familiar", text: "Tú y 2 personas más, cada quien con su propio perfil y sus playlists." },
             ].map((item) => (
               <li key={item.title}>
                 <h3 className="text-[21px] font-semibold tracking-[-0.01em]">{item.title}</h3>
